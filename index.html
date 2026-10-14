@@ -4,81 +4,133 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MOVE! Show-up score playground</title>
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <p class="logo">MOVE!</p>
-    <h1>The show-up score playground</h1>
-    <p class="subtitle">Three ways to score whether a user will show up, on the same five simulated users.</p>
+  <header class="topbar">
+    <div class="brand">
+      <img src="logo.svg" alt="" width="44" height="44">
+      <div>
+        <p class="wordmark">MOVE!</p>
+        <p class="slogan">“Show up. Meet up.”</p>
+      </div>
+    </div>
+    <div class="seed">
+      <span>Users from seed <strong id="seed-value"></strong></span>
+      <button type="button" id="new-seed">New users</button>
+      <button type="button" id="reset">Reset</button>
+    </div>
   </header>
 
   <main>
-    <section class="toolbar">
-      <div class="approach-buttons" id="approach-buttons">
-        <button data-approach="A">A · Simple average</button>
-        <button data-approach="B">B · Bayesian average</button>
-        <button data-approach="C">C · Show-up score</button>
-      </div>
-      <div class="seed">
-        <span>Seed <strong id="seed-value"></strong></span>
-        <button id="new-seed">New seed</button>
-        <button id="reset">Reset</button>
+    <!-- The three approaches, laid out like the four steps on slide 4 of the deck. -->
+    <section aria-labelledby="approaches-title">
+      <p class="eyebrow" id="approaches-title">Three ways to score the same five people · each one fixes the last</p>
+      <div class="approaches">
+        <button type="button" class="approach" data-approach="A" aria-pressed="true">
+          <span class="head"><span class="letter">A</span><strong>Average rating</strong></span>
+          <span>The mean of every rating received.</span>
+          <span class="blind">Blind spot: one 5★ review wins, and no-shows leave no rating.</span>
+        </button>
+        <span class="arrow" aria-hidden="true">→</span>
+        <button type="button" class="approach" data-approach="B" aria-pressed="false">
+          <span class="head"><span class="letter">B</span><strong>Bayesian rating</strong></span>
+          <span>Everyone starts with 5 pretend ratings of 3.5★.</span>
+          <span class="blind">Blind spot: still can't see who never showed up.</span>
+        </button>
+        <span class="arrow" aria-hidden="true">→</span>
+        <button type="button" class="approach" data-approach="C" aria-pressed="false">
+          <span class="head"><span class="letter">C</span><strong>Show-up score</strong></span>
+          <span>Recent attendance counts 70%, rating 30%.</span>
+          <span class="blind">Trade-off: the weights are a choice. Tune them below the ranking.</span>
+        </button>
       </div>
     </section>
 
-    <p class="legend">
-      <span class="dot showed"></span> showed up
-      <span class="dot late"></span> late cancel
-      <span class="dot noshow"></span> no-show
-      <span class="hint">Click a user to open the Explain panel.</span>
-    </p>
+    <div class="stage">
+      <!-- The ranking, styled like the comparison table on slide 7. -->
+      <section class="board" aria-labelledby="board-title">
+        <p class="eyebrow" id="board-eyebrow"></p>
+        <h1 id="board-title">Who would you meet tonight?</h1>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">Person</th>
+                <th scope="col">Last 90 days</th>
+                <th scope="col" class="num" data-column="A">A</th>
+                <th scope="col" class="num" data-column="B">B</th>
+                <th scope="col" class="num" data-column="C">C</th>
+                <th scope="col">Label (C)</th>
+              </tr>
+            </thead>
+            <tbody id="ranking-body"></tbody>
+          </table>
+        </div>
+        <p class="legend">
+          <span class="dot showed"></span> showed up
+          <span class="dot late"></span> late cancel
+          <span class="dot noshow"></span> no-show
+          <span class="hint">Select a person to see how their score is made.</span>
+        </p>
 
-    <section class="cards" id="cards"></section>
+        <section class="tune" aria-labelledby="tune-title">
+          <h3 id="tune-title">Tune score C · changes everyone's score</h3>
+          <label class="slider">
+            <span>Half-life <output id="halfLife-value"></output> days</span>
+            <input type="range" data-setting="halfLife" min="5" max="120" step="5">
+            <small>How fast old plans stop counting.</small>
+          </label>
+          <label class="slider">
+            <span>Showing up weighs <output id="reliabilityWeight-value"></output></span>
+            <input type="range" data-setting="reliabilityWeight" min="0" max="1" step="0.05">
+            <small>The rest of the score comes from ratings.</small>
+          </label>
+          <label class="slider">
+            <span>Pretend ratings <output id="priorConfidence-value"></output></span>
+            <input type="range" data-setting="priorConfidence" min="1" max="20" step="1">
+            <small>Real ratings needed to move away from 3.5★.</small>
+          </label>
+        </section>
+      </section>
 
-    <section class="grid">
-      <div class="card">
-        <h2>Ranking</h2>
-        <table class="ranking" id="ranking"></table>
-      </div>
+      <aside class="hood" aria-labelledby="hood-title">
+        <p class="eyebrow">Under the hood · score C</p>
+        <div id="hood-summary"></div>
 
-      <div class="card">
-        <h2>Settings for C</h2>
-        <label class="slider">
-          <span>Half-life <output id="halfLife-value"></output> days</span>
-          <input type="range" data-setting="halfLife" min="5" max="120" step="5">
-        </label>
-        <label class="slider">
-          <span>Reliability weight <output id="reliabilityWeight-value"></output></span>
-          <input type="range" data-setting="reliabilityWeight" min="0" max="1" step="0.05">
-        </label>
-        <label class="slider">
-          <span>Prior strength C <output id="priorConfidence-value"></output> ratings</span>
-          <input type="range" data-setting="priorConfidence" min="1" max="20" step="1">
-        </label>
-      </div>
+        <details class="maths">
+          <summary>Show the exact maths</summary>
+          <div id="maths-body"></div>
+        </details>
 
-      <form class="card" id="add-event">
-        <h2>Add event (today)</h2>
-        <label>User <select id="add-user"></select></label>
-        <label>Outcome
-          <select id="add-outcome">
-            <option value="showed">Showed up</option>
-            <option value="late">Late cancel</option>
-            <option value="noshow">No-show</option>
-          </select>
-        </label>
-        <label>Rating
-          <select id="add-rating">
-            <option>5</option><option>4</option><option>3</option><option>2</option><option>1</option>
-          </select>
-        </label>
-        <button type="submit">Add event</button>
-      </form>
-    </section>
+        <section class="panel" aria-labelledby="log-title">
+          <h3 id="log-title">Log a plan for <span id="log-name"></span> today</h3>
+          <div class="log-row">
+            <button type="button" data-outcome="showed">Showed up</button>
+            <label>rated
+              <select id="log-rating">
+                <option value="5">5★</option><option value="4">4★</option><option value="3">3★</option>
+                <option value="2">2★</option><option value="1">1★</option>
+              </select>
+            </label>
+          </div>
+          <div class="log-row">
+            <button type="button" data-outcome="late">Late cancel</button>
+            <button type="button" data-outcome="noshow">No-show</button>
+          </div>
+        </section>
+      </aside>
+    </div>
 
-    <section class="card explain" id="explain"></section>
+    <p class="sr-only" id="announce" aria-live="polite"></p>
   </main>
+
+  <footer>
+    <img src="logo.svg" alt="" width="24" height="24">
+    <span>MOVE! · Show-up score playground</span>
+  </footer>
 
   <script type="module" src="app.js"></script>
 </body>

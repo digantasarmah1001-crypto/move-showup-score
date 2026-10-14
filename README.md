@@ -58,7 +58,7 @@ Every constant is a named `const` at the top of `score.js`.
 
 Histories are generated with a seeded random generator (mulberry32), so the same seed always produces the
 same users. The default seed `16102341` was picked because every step of the demo shows clearly with it.
-**New seed** moves to the next seed. Leo and Nico sit close to the 50 line, so on some seeds a run of recent
+**New users** moves to the next seed. Leo and Nico sit close to the 50 line, so on some seeds a run of recent
 show-ups lifts one of them into *Building trust*. That is recency doing its job, and they still rank bottom
 under C on almost every seed.
 
@@ -67,24 +67,26 @@ under C on almost every seed.
 | File | What it does |
 |---|---|
 | `index.html` | page structure |
-| `style.css` | MOVE styling: dark background, dark cards, lime accent |
+| `style.css` | the pitch deck's look: dark slides, thin-bordered cards, lime accent, yes / partly / no dots |
+| `logo.svg` | the MOVE! logo, used in the header, footer and browser tab |
 | `score.js` | the three formulas as pure functions plus all constants; no DOM, so Node can test it |
 | `sim.js` | seeded random generator and persona history generation |
-| `app.js` | holds state, renders cards / ranking / Explain panel, handles sliders, buttons and the form |
+| `app.js` | holds state, draws the ranking and the under-the-hood panel, handles cards, sliders and buttons |
 | `tests.js` | 12 checks that the formulas behave as claimed |
 
 ## 2-minute demo script
 
-1. **Approach A** (selected on load). Sam and Nico are tied at the top with 5.00. Sam has one review, Nico
-   no-shows most plans. Ask the room: *would you meet Nico tonight?*
-2. **Click B.** Sam drops to the bottom (3.75, tied with Leo): one review no longer wins. But Nico is now **first** (4.25),
-   because B still can't see no-shows.
-3. **Click C.** Nico falls to last (44, *Low show-up*), Leo is just above him (47). Marta (84) and Ana (80)
-   lead. Ana no-showed a lot in her first month, but C forgives old behaviour. Drag **Half-life** to 120:
-   old events count almost as much as new ones and Ana drops to 74, *Building trust*. Drag it back.
-4. **Click Nico's card** and walk through the Explain panel: each event's weight, the weighted sum, adding the
-   prior (+2 / +3), the rating part, and the final formula (`100 × (0.70 × 0.275 + 0.30 × 0.813) = 44`).
-5. Optional: **Add event**, Marta, no-show. A and B don't move; C drops from 84 to 79.
+1. **Approach A** (selected on load). Sam and Nico are tied at the top with 5.00. Sam has one review; Nico's
+   dots are mostly grey rings, so he skips most plans. Ask the room: *would you meet Nico tonight?*
+2. **Click card B.** Sam drops ▼4 to last (3.75): one review no longer wins. But Nico goes ▲ to **first**
+   (4.25), because B still can't see no-shows.
+3. **Click card C.** Nico falls ▼4 to last (44, *Low show-up*), Leo is just above him (47). Marta (84) and Ana
+   (80) lead. Ana no-showed a lot in her first month, but C forgives old behaviour. Drag **Half-life** to 120:
+   old plans count almost as much as new ones and Ana drops to 74, *Building trust*. Drag it back.
+4. **Under the hood** (right panel, Nico is selected). Walk through the three steps: shows up 28%, rated
+   4.25★, then `70% × 27.5 + 30% × 81.3 = 19.3 + 24.4 = 44`. Open **Show the exact maths** for every plan's
+   weight, then open `score.js` to show the same formula in `showUpBreakdown`.
+5. Optional: select Marta and **Log a plan → No-show**. A and B don't move; C drops from 84 to 79.
 
 ## What I'd change next
 
