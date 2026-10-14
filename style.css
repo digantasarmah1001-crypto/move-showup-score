@@ -241,7 +241,6 @@ h1 { margin: 0; font-size: clamp(30px, 3.2vw, 46px); font-weight: 800; line-heig
 }
 .legend .dot:not(:first-child) { margin-left: 12px; }
 
-/* ---- Under the hood ---- */
 /* ---- Right column: the story card, then the under-the-hood panel ---- */
 .side { display: grid; gap: 16px; }
 
@@ -292,6 +291,7 @@ h1 { margin: 0; font-size: clamp(30px, 3.2vw, 46px); font-weight: 800; line-heig
 .app:not([data-step="4"]) .tune,
 .app:not([data-step="4"]) .seed { display: none; }
 
+/* ---- Under the hood ---- */
 .hood {
   display: grid; gap: 16px;
   padding: 20px;
