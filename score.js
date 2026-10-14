@@ -74,7 +74,7 @@ export function trustLabel(score) {
 }
 
 // Approach C, returning every intermediate number (not just the score) so the
-// Explain panel can show the calculation step by step from the same code.
+// under-the-hood panel can show the calculation step by step from the same code.
 export function showUpBreakdown(events, settings = DEFAULT_SETTINGS) {
   const rows = events.map((event) => {
     const weight = recencyWeight(event.daysAgo, settings.halfLife);
