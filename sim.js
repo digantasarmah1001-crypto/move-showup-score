@@ -5,7 +5,7 @@
 // The first seed after 16102026 (demo day) where every step of the demo shows
 // clearly: Sam and Nico top under A, Nico first under B, Nico last under C.
 export const DEFAULT_SEED = 16102341;
-const HISTORY_DAYS = 90;              // events are spread over the last 90 days
+export const HISTORY_DAYS = 90;       // events are spread over the last 90 days
 
 // mulberry32: a tiny seeded pseudo-random generator. Math.random() cannot be
 // seeded, so it would give different users on every page load. Returns a

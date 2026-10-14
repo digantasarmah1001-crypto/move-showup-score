@@ -1,16 +1,17 @@
-/* style.css: the look of the MOVE! pitch deck. Dark slides, thin-bordered cards,
-   one lime accent, and the deck's yes / partly / no dots reused for attendance. */
+/* style.css: the look of the MOVE! pitch deck, built for a projector.
+   Dark slides, thin-bordered cards, one lime accent, big bold numbers. */
 
 :root {
   --bg: #0E1116;
   --card: #171B22;
-  --line: #2A303A;
+  --line: #262C35;
   --lime: #D4F53C;
   --olive: #1E240F;   /* the highlighted MOVE! row on slide 7 */
   --text: #F4F4EF;
-  --muted: #A3ABB6;
-  --no: #6E7580;      /* the grey "no" ring, light enough to see on the cards */
-  --radius: 10px;
+  --muted: #9DA5B0;
+  --no: #6E7580;      /* the deck's grey "no" ring, light enough to see on dark */
+  --radius: 12px;
+  --row-h: 72px;      /* every ranking row is this tall, so a rank becomes a position */
 }
 
 * { box-sizing: border-box; }
@@ -20,227 +21,335 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 1.45;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
 }
 
-header, main, footer { max-width: 1240px; margin: 0 auto; padding: 0 24px; }
-
-button, select { font: inherit; color: inherit; }
+button, select, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
-
-/* A visible lime ring for keyboard users on every control. */
 :focus-visible { outline: 3px solid var(--lime); outline-offset: 2px; }
 
-/* Text only screen readers hear, such as "up 2 places". */
+/* Text only screen readers hear. */
 .sr-only {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip-path: inset(50%); white-space: nowrap;
 }
 
-/* ---- Top bar: logo and slogan as on slide 1 ---- */
-.topbar {
+/* ---- Cover slide ---- */
+.cover {
+  position: fixed; inset: 0; z-index: 10;
+  display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 48px;
+  padding: 48px 8vw;
+  background: var(--bg);
+}
+.cover[hidden] { display: none; }
+.cover-eyebrow { margin: 0 0 12px; color: var(--muted); font-weight: 700; font-size: 18px; }
+.cover-title {
+  margin: 0;
+  color: var(--lime);
+  font-size: clamp(72px, 11vw, 168px);
+  font-weight: 800; line-height: 0.9; letter-spacing: -0.03em;
+}
+.cover-slogan { margin: 20px 0 44px; color: var(--lime); font-style: italic; font-size: clamp(22px, 2.6vw, 36px); }
+.start {
+  background: var(--lime); color: var(--bg);
+  border: 0; border-radius: 999px;
+  padding: 16px 40px;
+  font-size: 20px; font-weight: 800;
+}
+.start:hover { filter: brightness(1.08); }
+.cover-logo { justify-self: center; width: min(34vw, 440px); }
+
+/* ---- Playground frame: header, stage, footer ---- */
+.app {
+  min-height: 100vh;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 32px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+.app.entering { animation: enter 500ms ease-out; }
+@keyframes enter { from { opacity: 0; transform: translateY(10px); } }
+
+.top {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
-  gap: 16px; padding-top: 16px; padding-bottom: 16px;
+  gap: 16px 24px; padding: 18px 0;
 }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand img { display: block; }
-.wordmark { margin: 0; color: var(--lime); font-weight: 800; font-size: 26px; line-height: 1; }
-.slogan { margin: 2px 0 0; color: var(--lime); font-style: italic; font-size: 14px; }
+.wordmark { margin: 0; color: var(--lime); font-size: 24px; font-weight: 800; line-height: 1; }
+.subtitle { margin: 3px 0 0; color: var(--muted); font-size: 14px; font-weight: 700; }
 
-.seed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
-.seed strong { color: var(--text); font-variant-numeric: tabular-nums; }
-
-.seed button, .log-row button {
+/* The A / B / C switch: one pill, the selected option filled lime. */
+.switch {
+  display: flex; gap: 4px; padding: 4px;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 8px 14px;
-  font-weight: 700;
+  border-radius: 999px;
 }
-.seed button:hover, .log-row button:hover { border-color: var(--lime); }
-
-/* Small lime label above each section, like "3 · The solution" in the deck. */
-.eyebrow { margin: 0 0 10px; color: var(--lime); font-weight: 700; font-size: 15px; }
-
-/* ---- Approach cards: slide 4's numbered steps with arrows ---- */
-.approaches { display: flex; align-items: stretch; gap: 10px; margin-bottom: 24px; }
-.approach {
-  flex: 1;
-  display: flex; flex-direction: column; gap: 4px;
-  text-align: left;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 14px 18px;
-  color: var(--muted);
-}
-.approach:hover { border-color: var(--muted); }
-.approach .head { display: flex; align-items: baseline; gap: 10px; }
-.approach .letter { color: var(--lime); font-size: 30px; font-weight: 800; line-height: 1; }
-.approach strong { color: var(--text); font-size: 19px; }
-.approach .blind { margin-top: 6px; font-size: 14px; }
-.approach[aria-pressed="true"] { background: var(--olive); border-color: var(--lime); }
-.arrow { align-self: center; color: var(--lime); font-size: 22px; }
-
-/* ---- Main stage: ranking on the left, under-the-hood panel on the right ---- */
-.stage {
-  display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr);
-  gap: 28px;
-  align-items: start;
-}
-
-h1 { margin: 0 0 8px; font-size: 30px; line-height: 1.15; }
-h2 { margin: 0; font-size: 24px; }
-h3 { margin: 0 0 10px; font-size: 16px; }
-
-/* ---- Ranking table: slide 7's comparison table ---- */
-.table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: separate; border-spacing: 0; }
-th, td { padding: 8px 10px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--line); }
-thead th { color: var(--muted); font-size: 14px; font-weight: 700; }
-thead th.active { color: var(--lime); }
-.num { text-align: right; font-variant-numeric: tabular-nums; }
-td.num { color: var(--muted); font-size: 17px; }
-td.num.active { color: var(--lime); font-weight: 800; font-size: 20px; }
-
-/* The selected person gets the lime-outlined row from slide 7. */
-tr.selected td, tr.selected th { background: var(--olive); border-top: 1px solid var(--lime); border-bottom: 1px solid var(--lime); }
-tr.selected > :first-child { border-left: 1px solid var(--lime); border-radius: var(--radius) 0 0 var(--radius); }
-tr.selected > :last-child { border-right: 1px solid var(--lime); border-radius: 0 var(--radius) var(--radius) 0; }
-
-.rank { width: 56px; font-weight: 800; font-size: 18px; white-space: nowrap; }
-.move { margin-left: 4px; font-size: 12px; font-weight: 700; }
-.move.up { color: var(--lime); }
-.move.down { color: var(--muted); }
-
-.person {
+.switch button {
   display: flex; align-items: center; gap: 10px;
-  background: none; border: 0; padding: 0; text-align: left;
+  padding: 8px 20px 8px 8px;
+  background: none; border: 0; border-radius: 999px;
+  color: var(--muted); font-weight: 700;
+  transition: background 250ms, color 250ms;
+}
+.switch button:hover { color: var(--text); }
+.switch .key {
+  display: grid; place-items: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--line);
+  color: var(--lime); font-weight: 800;
+}
+.switch button[aria-pressed="true"] { background: var(--lime); color: var(--bg); }
+.switch button[aria-pressed="true"] .key { background: var(--bg); border-color: var(--bg); }
+
+.main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 32px;
+  align-items: start;
+  padding: 8px 0 24px;
+}
+
+/* ---- Stage: the ranking ---- */
+.stage-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: 8px 24px; margin-bottom: 22px;
+}
+h1 { margin: 0; font-size: clamp(30px, 3.2vw, 46px); font-weight: 800; line-height: 1.05; letter-spacing: -0.02em; }
+.formula {
+  margin: 0;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--lime);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 14px;
+}
+
+/* The header and every row share one grid, so the columns line up. */
+.board-head, .row {
+  display: grid;
+  grid-template-columns: 32px 176px minmax(160px, 1fr) 116px 60px 116px;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+}
+.board-head { padding-bottom: 10px; color: var(--muted); font-size: 13px; font-weight: 700; }
+.timeline-head { display: flex; justify-content: space-between; }
+.score-head { grid-column: span 2; }
+.label-head { transition: opacity 300ms; opacity: 0; }
+
+/* Rows are stacked on top of each other and pushed down by their rank.
+   When the rank changes, the transition makes the row slide to its new place. */
+.board {
+  position: relative;
+  height: calc(var(--count, 5) * var(--row-h));
+  margin: 0; padding: 0; list-style: none;
+  border-top: 1px solid var(--line);
+}
+.row {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: var(--row-h);
+  transform: translateY(calc(var(--rank, 0) * var(--row-h)));
+  transition: transform 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  border-radius: var(--radius);
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+.row.selected { z-index: 1; background: var(--olive); box-shadow: inset 0 0 0 1px var(--lime); }
+
+.rank { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.who {
+  display: flex; align-items: center; gap: 12px;
+  padding: 6px 0; background: none; border: 0; border-radius: 8px;
+  text-align: left;
 }
 .avatar {
   flex: none;
   display: grid; place-items: center;
-  width: 36px; height: 36px; border-radius: 50%;
+  width: 40px; height: 40px; border-radius: 50%;
   border: 1px solid var(--line);
-  font-weight: 800;
+  font-size: 16px; font-weight: 800;
 }
-tr.selected .avatar { background: var(--lime); border-color: var(--lime); color: var(--bg); }
-.person strong { display: block; font-size: 17px; }
-.person small { display: block; color: var(--muted); font-size: 13px; font-weight: normal; }
+.row.selected .avatar { background: var(--lime); border-color: var(--lime); color: var(--bg); }
+.who strong { display: block; font-size: 18px; }
+.who small { display: block; color: var(--muted); font-size: 13px; }
 
-/* Attendance dots, the deck's legend: filled = yes, lime ring = partly, grey ring = no. */
-.timeline { display: flex; flex-wrap: wrap; gap: 3px; width: 127px; } /* exactly 10 dots per row */
-.dot { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; }
+/* Each plan is a dot on a 90-day line. Shapes follow the deck's legend:
+   filled = yes (showed up), lime ring = partly (late cancel), grey ring = no (no-show). */
+.timeline { position: relative; height: 22px; }
+.timeline::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 50%;
+  height: 1px; background: var(--line);
+}
+.dot {
+  display: inline-block;
+  width: 11px; height: 11px; border-radius: 50%;
+  transition: opacity 450ms;
+}
+.timeline .dot { position: absolute; top: 50%; transform: translate(-50%, -50%); }
 .dot.showed { background: var(--lime); }
-.dot.late { border: 2px solid var(--lime); }
-.dot.noshow { border: 2px solid var(--no); }
+.dot.late { border: 2px solid var(--lime); background: var(--bg); }
+.dot.noshow { border: 2px solid var(--no); background: var(--bg); }
+
+.meter { position: relative; height: 10px; border-radius: 5px; background: var(--card); }
+.meter .fill {
+  display: block; height: 100%; border-radius: 5px; background: var(--lime);
+  transition: width 600ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* Marks at 50 and 75, the label thresholds. Only score C has labels, so only C shows them. */
+.meter .tick {
+  position: absolute; top: -4px; bottom: -4px; width: 2px;
+  background: var(--muted); opacity: 0; transition: opacity 300ms;
+}
+.meter .t50 { left: 50%; }
+.meter .t75 { left: 75%; }
+
+.value { text-align: right; color: var(--lime); font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
 
 .badge {
-  display: inline-block; white-space: nowrap;
-  padding: 3px 10px; border-radius: 999px;
+  justify-self: start; white-space: nowrap;
+  padding: 4px 10px; border-radius: 999px;
   font-size: 13px; font-weight: 700;
 }
 .badge.trusted { background: var(--lime); color: var(--bg); }
 .badge.building { border: 1px solid var(--lime); color: var(--lime); }
 .badge.low { border: 1px solid var(--no); color: var(--muted); }
+.row .badge { opacity: 0; transition: opacity 300ms; }
 
-.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0 0; color: var(--muted); font-size: 14px; }
-.legend .hint { margin-left: auto; }
+/* Things that only make sense for score C fade in when C is picked. */
+.app[data-approach="C"] .row .badge,
+.app[data-approach="C"] .label-head { opacity: 1; }
+.app[data-approach="C"] .meter .tick { opacity: 0.8; }
+
+.legend {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
+  margin: 16px 0 0 16px;
+  color: var(--muted); font-size: 13px;
+}
+.legend .dot:not(:first-child) { margin-left: 12px; }
 
 /* ---- Under the hood ---- */
 .hood {
+  display: grid; gap: 16px;
+  padding: 20px;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 18px;
 }
-.hood-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-.hood-head .avatar { width: 48px; height: 48px; background: var(--lime); border-color: var(--lime); color: var(--bg); font-size: 20px; }
+.eyebrow { margin: 0; color: var(--lime); font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.hood-head { display: flex; align-items: center; gap: 14px; }
+.hood-head .avatar { width: 52px; height: 52px; background: var(--lime); border-color: var(--lime); color: var(--bg); font-size: 22px; }
+.hood-head h2 { margin: 0; font-size: 28px; line-height: 1.1; }
 .hood-head p { margin: 0; color: var(--muted); font-size: 14px; }
-.big-score { margin-left: auto; text-align: right; }
-.big-score strong { display: block; color: var(--lime); font-size: 44px; line-height: 1; font-variant-numeric: tabular-nums; }
 
-.steps { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 12px; }
-.steps h3 { display: flex; justify-content: space-between; margin-bottom: 6px; }
-.steps h3 span { color: var(--lime); font-variant-numeric: tabular-nums; }
-.steps p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+/* Show-up points + rating points = score, as three tiles. */
+.equation { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 6px; }
+.term { padding: 10px 6px; border-radius: 10px; background: var(--bg); text-align: center; }
+.term span, .term small { display: block; color: var(--muted); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.term strong { display: block; font-size: 30px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.term.total { background: var(--lime); color: var(--bg); }
+.term.total span, .term.total small { color: var(--bg); }
+.op { color: var(--lime); font-size: 22px; font-weight: 800; }
 
-/* Bars that show each number as a length. aria-hidden in the HTML, because the text says the same. */
-.bar { position: relative; display: flex; height: 12px; border-radius: 6px; background: var(--bg); overflow: hidden; }
-.bar .fill { background: var(--lime); }
-.bar .fill.rating { background: transparent; box-shadow: inset 0 0 0 2px var(--lime); }
-.bar.score { height: 16px; overflow: visible; }
-.tick { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--text); }
-.tick-labels { position: relative; height: 16px; font-size: 12px; color: var(--muted); }
-.tick-labels span { position: absolute; transform: translateX(-50%); }
+.weights { margin: 0; }
+.weights svg { display: block; width: 100%; height: auto; }
+.weights figcaption { display: flex; justify-content: space-between; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.baseline { stroke: var(--line); }
+.curve { fill: none; stroke: var(--text); stroke-opacity: 0.45; stroke-width: 1.5; stroke-dasharray: 4 4; }
+.half { stroke: var(--muted); stroke-dasharray: 2 3; }
+.half-label { fill: var(--muted); font-size: 11px; font-weight: 700; }
+.bar-showed { fill: var(--lime); }
+.bar-late { fill: var(--bg); stroke: var(--lime); stroke-width: 1.5; }
+.bar-noshow { fill: var(--bg); stroke: var(--no); stroke-width: 1.5; }
 
-.maths { border-top: 1px solid var(--line); padding: 12px 0; }
-.maths summary { cursor: pointer; font-weight: 700; color: var(--lime); }
-.maths p { margin: 14px 0 4px; font-size: 14px; }
-.formula {
+.tune { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.slider span { display: block; color: var(--muted); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.slider output { display: block; color: var(--lime); font-size: 17px; font-weight: 800; }
+input[type="range"] { width: 100%; margin: 8px 0 0; accent-color: var(--lime); }
+
+.log { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.log-title { width: 100%; margin: 0; color: var(--muted); font-size: 13px; font-weight: 700; }
+.log button {
+  flex: 1;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.log button:hover { border-color: var(--lime); }
+select {
+  padding: 7px 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 13px; font-weight: 700;
+}
+
+.maths summary { color: var(--muted); font-size: 13px; font-weight: 700; cursor: pointer; }
+.maths p { margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
+.formula-line {
   margin: 0;
   padding: 8px 10px;
   border-radius: 8px;
   background: var(--bg);
   font-family: Consolas, "Courier New", monospace;
-  font-size: 13px;
-  overflow-x: auto;
-  white-space: nowrap;
+  font-size: 12px;
+  overflow-x: auto; white-space: nowrap;
 }
-.events { max-height: 220px; overflow-y: auto; margin-top: 8px; }
-.events table { font-size: 13px; }
-.events th, .events td { padding: 4px 6px; text-align: right; }
+.events { max-height: 200px; overflow-y: auto; margin-top: 8px; }
+.events table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.events th, .events td { padding: 3px 6px; text-align: right; border-bottom: 1px solid var(--line); }
 .events th:first-child, .events td:first-child { text-align: left; }
 
-.panel { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 4px; margin-bottom: 14px; }
-.log-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
-.log-row button { flex: 1; }
-.log-row label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; }
-select {
-  background: var(--bg);
+/* ---- Footer ---- */
+.bottom {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 16px 0 20px;
+  border-top: 1px solid var(--line);
+  color: var(--muted); font-size: 13px;
+}
+.seed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.seed strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.seed button {
+  padding: 6px 12px;
+  background: none;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 6px 8px;
+  border-radius: 999px;
+  font-size: 13px; font-weight: 700;
+}
+.seed button:hover { border-color: var(--lime); }
+.keys { margin: 0; }
+kbd {
+  display: inline-block; min-width: 22px; margin-right: 2px;
+  padding: 1px 6px;
+  border: 1px solid var(--line); border-radius: 5px;
+  color: var(--text); font-family: Arial, sans-serif; font-size: 12px; text-align: center;
 }
 
-/* The three sliders sit side by side under the ranking, where you can watch the rows react. */
-.tune {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 0 24px;
-  margin-top: 16px;
-  padding: 14px 18px 2px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-.tune h3 { grid-column: 1 / -1; }
-
-.slider { display: block; margin-bottom: 14px; }
-.slider span { display: block; font-size: 14px; }
-.slider output { color: var(--lime); font-weight: 800; }
-.slider small { display: block; color: var(--muted); font-size: 13px; }
-input[type="range"] { width: 100%; margin: 6px 0 2px; accent-color: var(--lime); }
-
-/* ---- Footer, like the bottom corner of every slide ---- */
-footer {
-  display: flex; align-items: center; gap: 8px;
-  padding-top: 32px; padding-bottom: 24px;
-  color: var(--muted); font-size: 13px; font-weight: 700;
+/* Turn the animations off for people who ask their system for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
 }
 
-/* ---- Narrow screens: stack everything, arrows point down ---- */
-@media (max-width: 960px) {
-  /* minmax(0, …) lets the column shrink below the table's width, so the table
-     scrolls inside its own box instead of pushing the whole page sideways. */
-  .stage { grid-template-columns: minmax(0, 1fr); }
+/* ---- Smaller screens ---- */
+@media (max-width: 1180px) {
+  .main { grid-template-columns: minmax(0, 1fr); }
 }
-@media (max-width: 720px) {
-  header, main, footer { padding-left: 16px; padding-right: 16px; }
-  .approaches { flex-direction: column; }
-  .arrow { transform: rotate(90deg); }
-  h1 { font-size: 26px; }
-  .legend .hint { margin-left: 0; }
+@media (max-width: 760px) {
+  :root { --row-h: 64px; }
+  .app { padding: 0 16px; }
+  .cover { grid-template-columns: 1fr; padding: 32px 24px; }
+  .cover-logo { order: -1; justify-self: start; width: 120px; }
+  .switch { width: 100%; }
+  .switch button { flex: 1; justify-content: center; padding: 8px; font-size: 14px; }
+  .switch .key { display: none; }
+  .board-head { display: none; }
+  .row { grid-template-columns: 22px minmax(0, 1fr) 56px; gap: 10px; padding: 0 10px; }
+  .row .timeline, .row .meter, .row .badge, .legend { display: none; }
+  .keys { display: none; }
 }

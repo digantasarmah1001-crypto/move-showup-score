@@ -58,7 +58,7 @@ Every constant is a named `const` at the top of `score.js`.
 
 Histories are generated with a seeded random generator (mulberry32), so the same seed always produces the
 same users. The default seed `16102341` was picked because every step of the demo shows clearly with it.
-**New users** moves to the next seed. Leo and Nico sit close to the 50 line, so on some seeds a run of recent
+**Shuffle users** moves to the next seed. Leo and Nico sit close to the 50 line, so on some seeds a run of recent
 show-ups lifts one of them into *Building trust*. That is recency doing its job, and they still rank bottom
 under C on almost every seed.
 
@@ -68,25 +68,41 @@ under C on almost every seed.
 |---|---|
 | `index.html` | page structure |
 | `style.css` | the pitch deck's look: dark slides, thin-bordered cards, lime accent, yes / partly / no dots |
-| `logo.svg` | the MOVE! logo, used in the header, footer and browser tab |
+| `logo.svg` | the MOVE! logo, used on the cover slide, in the header and as the browser tab icon |
 | `score.js` | the three formulas as pure functions plus all constants; no DOM, so Node can test it |
 | `sim.js` | seeded random generator and persona history generation |
-| `app.js` | holds state, draws the ranking and the under-the-hood panel, handles cards, sliders and buttons |
+| `app.js` | holds state, draws the animated ranking and the under-the-hood panel, handles buttons, sliders and keys |
 | `tests.js` | 12 checks that the formulas behave as claimed |
+
+## Presenting it
+
+The page opens on a cover slide; press **Start** (or Enter). Keyboard shortcuts while presenting:
+
+| Key | Does |
+|---|---|
+| `1` `2` `3` | switch to approach A, B or C |
+| `↑` `↓` | select the person above or below |
+| `R` | reset everything to the start of the demo |
+
+Each plan is a dot on a 90-day line (today on the right): filled = showed up, lime ring = late cancel, grey
+ring = no-show, the same yes / partly / no dots as the pitch deck. Under A and B, plans without a rating fade
+out, because those formulas never see them. Under C every plan is back, and older plans are fainter because
+they weigh less.
 
 ## 2-minute demo script
 
-1. **Approach A** (selected on load). Sam and Nico are tied at the top with 5.00. Sam has one review; Nico's
-   dots are mostly grey rings, so he skips most plans. Ask the room: *would you meet Nico tonight?*
-2. **Click card B.** Sam drops ▼4 to last (3.75): one review no longer wins. But Nico goes ▲ to **first**
-   (4.25), because B still can't see no-shows.
-3. **Click card C.** Nico falls ▼4 to last (44, *Low show-up*), Leo is just above him (47). Marta (84) and Ana
-   (80) lead. Ana no-showed a lot in her first month, but C forgives old behaviour. Drag **Half-life** to 120:
-   old plans count almost as much as new ones and Ana drops to 74, *Building trust*. Drag it back.
-4. **Under the hood** (right panel, Nico is selected). Walk through the three steps: shows up 28%, rated
-   4.25★, then `70% × 27.5 + 30% × 81.3 = 19.3 + 24.4 = 44`. Open **Show the exact maths** for every plan's
-   weight, then open `score.js` to show the same formula in `showUpBreakdown`.
-5. Optional: select Marta and **Log a plan → No-show**. A and B don't move; C drops from 84 to 79.
+1. **Press 1 (A).** Sam and Nico are tied at the top with 5.00. Sam has one plan; most of Nico's plans have
+   faded out, because A only sees ratings. Ask the room: *would you meet Nico tonight?*
+2. **Press 2 (B).** The rows slide: Sam drops to last (3.75), so one review no longer wins. But Nico moves to
+   **first** (4.25), because B still can't see no-shows.
+3. **Press 3 (C).** Nico's no-shows reappear and he slides to last (44, *Low show-up*), just below Leo (47).
+   Marta (84) and Ana (80) lead. Ana missed a lot in her first month, but those plans are old and faint. Drag
+   **Half-life** to 120: old plans count almost as much as new ones and Ana drops to 74. Drag it back.
+4. **Under the hood** (right panel, Nico is selected). The equation: show-up 19.3 + rating 24.4 = 44. The
+   chart shows how much each of his plans counts, and how his recent ones are mostly no-shows. Drag the
+   half-life slider to reshape the curve. Open **Exact maths** if asked, then open `score.js` to show the
+   same formula in `showUpBreakdown`.
+5. Optional: click Marta and press **+ No-show**. Her A and B don't move; C drops from 84 to 79.
 
 ## What I'd change next
 

@@ -2,16 +2,29 @@
 // All the maths lives in score.js; this file only reads state, calls the
 // scoring functions and turns the results into HTML.
 
-import { generateUsers, DEFAULT_SEED } from "./sim.js";
+import { generateUsers, DEFAULT_SEED, HISTORY_DAYS } from "./sim.js";
 import {
-  simpleAverage, bayesianAverage, showUpBreakdown, ratingsOf, DEFAULT_SETTINGS,
-  PRIOR_MEAN, PRIOR_SHOWS, PRIOR_NO_SHOWS, TRUSTED_MIN, BUILDING_MIN,
+  simpleAverage, bayesianAverage, showUpBreakdown, ratingsOf, recencyWeight,
+  DEFAULT_SETTINGS, PRIOR_MEAN, PRIOR_SHOWS, PRIOR_NO_SHOWS,
 } from "./score.js";
 
-const APPROACHES = ["A", "B", "C"];
 const APPROACH_NAMES = { A: "Average rating", B: "Bayesian rating", C: "Show-up score" };
 const LABEL_CLASSES = { "Trusted": "trusted", "Building trust": "building", "Low show-up": "low" };
 const OUTCOME_NAMES = { showed: "showed up", late: "late cancel", noshow: "no-show" };
+const KEY_TO_APPROACH = { 1: "A", 2: "B", 3: "C" };
+
+const GHOST_OPACITY = 0.12;  // plans that A and B never see
+const OLDEST_OPACITY = 0.25; // under C, even the oldest plan stays faintly visible
+
+// How each slider's value is written next to its label.
+const SETTING_FORMATS = {
+  halfLife: (v) => `${v} days`,
+  reliabilityWeight: (v) => `${Math.round(v * 100)}%`,
+  priorConfidence: (v) => String(v),
+};
+
+// Size of the weight chart, in the SVG's own units (see the viewBox in index.html).
+const CHART = { left: 8, right: 392, base: 118, height: 100 };
 
 // Everything that can change on the page lives in this one object.
 // Every user action updates it, then render() redraws the page from it.
@@ -20,9 +33,14 @@ const state = {
   users: generateUsers(DEFAULT_SEED),
   settings: { ...DEFAULT_SETTINGS }, // a copy, so moving a slider never changes the defaults
   approach: "A",
-  previousApproach: null,            // used to draw the ▲▼ rank-change arrows
   selectedId: "nico",
 };
+
+const app = document.getElementById("app");
+const board = document.getElementById("board");
+const cover = document.getElementById("cover");
+
+// ---------- Reading scores ----------
 
 // Calculates all three scores for one user with the current slider settings.
 function scoresFor(user) {
@@ -40,12 +58,6 @@ function sortValue(scores, approach) {
   return scores[approach] ?? -Infinity;
 }
 
-// Shows a score as text: A and B are 1-5 ratings, C is a whole number 0-100.
-function formatScore(scores, approach) {
-  if (approach === "C") return String(scores.C.score);
-  return scores[approach] === null ? "–" : scores[approach].toFixed(2);
-}
-
 // Returns users with their scores, best first under the given approach.
 function rankedUsers(approach) {
   return state.users
@@ -53,141 +65,200 @@ function rankedUsers(approach) {
     .sort((x, y) => sortValue(y.scores, approach) - sortValue(x.scores, approach));
 }
 
-// Maps each user id to its position (0 = first) under an approach.
-function positionsBy(approach) {
-  return Object.fromEntries(rankedUsers(approach).map(({ user }, position) => [user.id, position]));
-}
-
-// The user whose score the right-hand panel is explaining.
+// The user whose score the right-hand panel is showing.
 function selectedUser() {
   return state.users.find((u) => u.id === state.selectedId);
 }
 
-// "1 plan", "2 plans": keeps the sentences on the page grammatical.
+// The score as text: A and B are 1-5 ratings, C is a whole number 0-100.
+function formatValue(scores, approach) {
+  if (approach === "C") return String(scores.C.score);
+  return scores[approach] === null ? "–" : scores[approach].toFixed(2);
+}
+
+// How full the score bar is, from 0 to 1. Ratings start at 1, so 1★ is an empty bar.
+function meterFraction(scores, approach) {
+  if (approach === "C") return scores.C.score / 100;
+  return scores[approach] === null ? 0 : (scores[approach] - 1) / 4;
+}
+
+// ---------- Small helpers ----------
+
+// "1 plan", "2 plans": keeps sentences grammatical.
 function plural(count, word) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
-// Describes what happened at one event.
+// 0.275 → "28%".
+function percent(fraction) {
+  return `${Math.round(100 * fraction)}%`;
+}
+
+// Describes what happened at one plan.
 function outcomeOf(event) {
   if (event.showedUp) return "showed";
   if (event.cancelledLate) return "late";
   return "noshow";
 }
 
-// Counts how many events ended in each outcome.
+// Counts how many plans ended in each outcome.
 function countOutcomes(events) {
   const counts = { showed: 0, late: 0, noshow: 0 };
   events.forEach((e) => { counts[outcomeOf(e)] += 1; });
   return counts;
 }
 
-// One dot per event, oldest first. Screen readers get one summary sentence
-// instead of twenty separate dots.
-function timelineHtml(events) {
-  const c = countOutcomes(events);
-  const summary = `${plural(events.length, "plan")}: ${c.showed} showed up, ${plural(c.late, "late cancel")}, ${plural(c.noshow, "no-show")}`;
-  const dots = events.map((e) =>
-    `<span class="dot ${outcomeOf(e)}" title="${e.daysAgo} days ago: ${OUTCOME_NAMES[outcomeOf(e)]}"></span>`).join("");
-  return `<span class="timeline" role="img" aria-label="${summary}">${dots}</span>`;
+// Where a plan sits on the 90-day line: 0% is 90 days ago, 100% is today.
+function timelinePosition(daysAgo) {
+  return 100 * (1 - daysAgo / HISTORY_DAYS);
 }
 
-// The ▲2 / ▼3 next to a rank, showing how far someone moved since the last approach.
-function rankChangeHtml(previousPositions, userId, position) {
-  if (!previousPositions) return "";
-  const change = previousPositions[userId] - position;
-  if (change === 0) return "";
-  const direction = change > 0 ? "up" : "down";
-  return `<span class="move ${direction}"><span aria-hidden="true">${change > 0 ? "▲" : "▼"}${Math.abs(change)}</span>` +
-    `<span class="sr-only">${direction} ${plural(Math.abs(change), "place")}</span></span>`;
+// How visible a plan's dot is. A and B only use ratings, so plans with no
+// rating (no-shows, late cancels) almost disappear: those formulas never see
+// them. Under C every plan counts, and older plans fade as their weight drops.
+function dotOpacity(event) {
+  if (state.approach !== "C") return event.rating === null ? GHOST_OPACITY : 1;
+  const weight = recencyWeight(event.daysAgo, state.settings.halfLife);
+  return OLDEST_OPACITY + (1 - OLDEST_OPACITY) * weight;
 }
 
-// Draws the ranking table, ordered by the selected approach so the order
-// visibly changes when you switch from A to B to C.
-function renderRanking() {
-  const previous = state.previousApproach ? positionsBy(state.previousApproach) : null;
+// ---------- The ranking board ----------
 
-  document.getElementById("ranking-body").innerHTML = rankedUsers(state.approach).map(({ user, scores }, position) => `
-    <tr class="${user.id === state.selectedId ? "selected" : ""}">
-      <td class="rank">${position + 1}${rankChangeHtml(previous, user.id, position)}</td>
-      <th scope="row">
-        <button type="button" class="person" data-id="${user.id}" aria-pressed="${user.id === state.selectedId}">
-          <span class="avatar" aria-hidden="true">${user.name[0]}</span>
-          <span><strong>${user.name}</strong><small>${user.tagline}</small></span>
-        </button>
-      </th>
-      <td>${timelineHtml(user.events)}</td>
-      ${APPROACHES.map((a) => `<td class="num ${a === state.approach ? "active" : ""}">${formatScore(scores, a)}</td>`).join("")}
-      <td><span class="badge ${LABEL_CLASSES[scores.C.label]}">${scores.C.label}</span></td>
-    </tr>`).join("");
-
-  document.querySelectorAll("[data-column]").forEach((th) => {
-    th.classList.toggle("active", th.dataset.column === state.approach);
-  });
-  const since = state.previousApproach ? ` · arrows show the change since ${state.previousApproach}` : "";
-  document.getElementById("board-eyebrow").textContent = `Ranked by ${state.approach} · ${APPROACH_NAMES[state.approach]}${since}`;
-}
-
-// A horizontal bar, used to show a number as a length. Hidden from screen
-// readers because the sentence next to it already says the number.
-function barHtml(fraction, extraClass = "") {
-  return `<div class="bar" aria-hidden="true"><span class="fill ${extraClass}" style="width:${100 * fraction}%"></span></div>`;
-}
-
-// The final score as one bar split into its two parts, with marks at the
-// label thresholds so you can see how close someone is to the next label.
-function scoreBarHtml(showPoints, ratePoints) {
-  return `
-    <div class="bar score" aria-hidden="true">
-      <span class="fill" style="width:${showPoints}%"></span>
-      <span class="fill rating" style="width:${ratePoints}%"></span>
-      <span class="tick" style="left:${BUILDING_MIN}%"></span>
-      <span class="tick" style="left:${TRUSTED_MIN}%"></span>
-    </div>
-    <div class="tick-labels" aria-hidden="true">
-      <span style="left:${BUILDING_MIN}%">${BUILDING_MIN}</span><span style="left:${TRUSTED_MIN}%">${TRUSTED_MIN}</span>
-    </div>`;
-}
-
-// The plain-language part of the panel: score C for the selected user in
-// three steps, using the numbers showUpBreakdown already calculated.
-function renderHoodSummary(user, b) {
-  const counts = countOutcomes(user.events);
-  const ratings = ratingsOf(user.events);
-  const showShare = state.settings.reliabilityWeight;
-  const showPoints = 100 * showShare * b.reliability;
-  const ratePoints = 100 * b.ratingWeight * b.ratingPart;
-  const late = counts.late > 0 ? ` and ${plural(counts.late, "late cancel")}` : "";
-
-  document.getElementById("hood-summary").innerHTML = `
-    <div class="hood-head">
+// Builds one row of the board. Rows are made once and afterwards only moved
+// and updated, so the browser can animate them sliding to a new rank.
+function createRow(user) {
+  const row = document.createElement("li");
+  row.className = "row";
+  row.dataset.row = user.id;
+  row.innerHTML = `
+    <span class="rank"></span>
+    <button type="button" class="who" data-id="${user.id}">
       <span class="avatar" aria-hidden="true">${user.name[0]}</span>
-      <div><h2 id="hood-title">${user.name}</h2><p>${user.tagline}</p></div>
-      <div class="big-score"><strong>${b.score}</strong><span class="badge ${LABEL_CLASSES[b.label]}">${b.label}</span></div>
-    </div>
-    <ol class="steps">
-      <li>
-        <h3>1 · Shows up <span>${Math.round(100 * b.reliability)}%</span></h3>
-        ${barHtml(b.reliability)}
-        <p>Came to ${counts.showed} of ${plural(user.events.length, "plan")}${late}. Recent plans count more,
-          and everyone starts with ${PRIOR_SHOWS} pretend shows and ${PRIOR_NO_SHOWS} pretend no-show.</p>
-      </li>
-      <li>
-        <h3>2 · Gets rated <span>${b.bayes.toFixed(2)}★</span></h3>
-        ${barHtml(b.ratingPart, "rating")}
-        <p>${plural(ratings.length, "real rating")} mixed with ${state.settings.priorConfidence} pretend
-          ${PRIOR_MEAN}★ ones, so a few reviews can't swing it.</p>
-      </li>
-      <li>
-        <h3>3 · Score <span>${b.score} / 100</span></h3>
-        ${scoreBarHtml(showPoints, ratePoints)}
-        <p>${Math.round(100 * showShare)}% showing up + ${Math.round(100 * b.ratingWeight)}% rating
-          = ${showPoints.toFixed(1)} + ${ratePoints.toFixed(1)} = ${b.score}</p>
-      </li>
-    </ol>`;
+      <span><strong>${user.name}</strong><small>${user.tagline}</small></span>
+    </button>
+    <span class="timeline" role="img"></span>
+    <span class="meter" aria-hidden="true"><span class="fill"></span><span class="tick t50"></span><span class="tick t75"></span></span>
+    <span class="value"></span>
+    <span class="badge"></span>`;
+  return row;
 }
 
-// The "Show the exact maths" part: every event's weight and the real formulas.
+// Puts one dot per plan on a row's 90-day line. Runs again whenever that
+// user's plans change. Screen readers get one summary sentence instead.
+function drawTimeline(row, user) {
+  const c = countOutcomes(user.events);
+  const timeline = row.querySelector(".timeline");
+  timeline.setAttribute("aria-label",
+    `${plural(user.events.length, "plan")}: ${c.showed} showed up, ${plural(c.late, "late cancel")}, ${plural(c.noshow, "no-show")}`);
+  timeline.innerHTML = user.events.map((e) =>
+    `<span class="dot ${outcomeOf(e)}" style="left:${timelinePosition(e.daysAgo)}%"></span>`).join("");
+}
+
+// Creates every row from scratch: at start-up and when the users change.
+function buildBoard() {
+  board.replaceChildren(...state.users.map((user) => {
+    const row = createRow(user);
+    drawTimeline(row, user);
+    return row;
+  }));
+  board.style.setProperty("--count", state.users.length);
+}
+
+// Moves every row to its rank under the selected approach and updates its
+// numbers. CSS turns each change of --rank into a sliding animation.
+function renderBoard() {
+  rankedUsers(state.approach).forEach(({ user, scores }, position) => {
+    const row = board.querySelector(`[data-row="${user.id}"]`);
+    const selected = user.id === state.selectedId;
+    row.style.setProperty("--rank", position);
+    row.classList.toggle("selected", selected);
+    row.querySelector(".who").setAttribute("aria-pressed", String(selected));
+    row.querySelector(".rank").textContent = position + 1;
+    row.querySelector(".fill").style.width = `${100 * meterFraction(scores, state.approach)}%`;
+    row.querySelector(".value").textContent = formatValue(scores, state.approach);
+    const badge = row.querySelector(".badge");
+    badge.textContent = scores.C.label;
+    badge.className = `badge ${LABEL_CLASSES[scores.C.label]}`;
+    row.querySelectorAll(".dot").forEach((dot, i) => { dot.style.opacity = dotOpacity(user.events[i]); });
+  });
+}
+
+// ---------- Header and controls ----------
+
+// The one-line formula next to the heading, for the selected approach.
+function formulaText() {
+  const { priorConfidence, reliabilityWeight, halfLife } = state.settings;
+  if (state.approach === "A") return "average of all ratings";
+  if (state.approach === "B") return `(${priorConfidence} × ${PRIOR_MEAN}★ + ratings) ÷ (${priorConfidence} + count)`;
+  return `${percent(reliabilityWeight)} showing up + ${percent(1 - reliabilityWeight)} rating · half-life ${halfLife} days`;
+}
+
+// Updates the switch, formula, seed number and sliders to match state.
+function renderControls() {
+  app.dataset.approach = state.approach; // lets CSS show C-only things such as labels
+  document.querySelectorAll("[data-pick]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.pick === state.approach));
+  });
+  document.getElementById("formula").textContent = formulaText();
+  document.getElementById("seed-value").textContent = state.seed;
+  document.querySelectorAll("[data-setting]").forEach((slider) => {
+    const key = slider.dataset.setting;
+    slider.value = state.settings[key];
+    document.getElementById(`${key}-value`).textContent = SETTING_FORMATS[key](state.settings[key]);
+  });
+}
+
+// ---------- Under the hood ----------
+
+// Show-up points + rating points = score, using the numbers showUpBreakdown calculated.
+function equationHtml(b) {
+  const showWeight = state.settings.reliabilityWeight;
+  const showPoints = 100 * showWeight * b.reliability;
+  const ratePoints = 100 * b.ratingWeight * b.ratingPart;
+  return `
+    <div class="term"><span>Show-up</span><strong>${showPoints.toFixed(1)}</strong><small>${percent(b.reliability)} × ${showWeight.toFixed(2)}</small></div>
+    <span class="op" aria-hidden="true">+</span>
+    <div class="term"><span>Rating ${b.bayes.toFixed(2)}★</span><strong>${ratePoints.toFixed(1)}</strong><small>${percent(b.ratingPart)} × ${b.ratingWeight.toFixed(2)}</small></div>
+    <span class="op" aria-hidden="true">=</span>
+    <div class="term total"><span>Score</span><strong>${b.score}</strong><small>${b.label}</small></div>`;
+}
+
+// The x position in the chart of a plan from daysAgo days ago. Today is on the right.
+function chartX(daysAgo) {
+  return CHART.right - (daysAgo / HISTORY_DAYS) * (CHART.right - CHART.left);
+}
+
+// The y position in the chart for a weight between 0 and 1.
+function chartY(weight) {
+  return CHART.base - CHART.height * weight;
+}
+
+// The weight chart: one bar per plan, as tall as that plan's weight, in front
+// of the decay curve. Moving the half-life slider reshapes the curve and bars.
+function weightsChartSvg(user, b) {
+  const halfLife = state.settings.halfLife;
+  const curve = Array.from({ length: HISTORY_DAYS + 1 }, (_, day) =>
+    `${chartX(day).toFixed(1)},${chartY(recencyWeight(day, halfLife)).toFixed(1)}`).join(" ");
+
+  const bars = b.rows.map((row, i) => `
+    <rect class="bar-${outcomeOf(user.events[i])}" x="${(chartX(row.daysAgo) - 3).toFixed(1)}" y="${chartY(row.weight).toFixed(1)}"
+      width="6" height="${(CHART.height * row.weight).toFixed(1)}" rx="2"/>`).join("");
+
+  // A dotted line where weight has dropped to one half. Hidden if it falls off the chart.
+  let halfMark = "";
+  if (halfLife <= HISTORY_DAYS) {
+    const x = chartX(halfLife);
+    const labelOnLeft = x > CHART.right - 60;
+    halfMark = `
+      <line class="half" x1="${x}" x2="${x}" y1="${chartY(1)}" y2="${CHART.base}"/>
+      <text class="half-label" x="${labelOnLeft ? x - 4 : x + 4}" y="${chartY(1) + 10}" text-anchor="${labelOnLeft ? "end" : "start"}">half-life</text>`;
+  }
+
+  return `<line class="baseline" x1="${CHART.left}" x2="${CHART.right}" y1="${CHART.base}" y2="${CHART.base}"/>
+    ${halfMark}<polyline class="curve" points="${curve}"/>${bars}`;
+}
+
+// The "Exact maths" section: every plan's weight and the formulas with real numbers.
 function renderMaths(user, b) {
   const { halfLife, reliabilityWeight, priorConfidence } = state.settings;
   const ratings = ratingsOf(user.events);
@@ -197,95 +268,143 @@ function renderMaths(user, b) {
     <td>${row.weight.toFixed(3)}</td><td>${row.attendance}</td><td>${row.weighted.toFixed(3)}</td></tr>`).join("");
 
   document.getElementById("maths-body").innerHTML = `
-    <p>Each plan's weight: w = 0.5 ^ (days ago / ${halfLife})</p>
+    <p>Weight per plan: 0.5 ^ (days ago / ${halfLife})</p>
     <div class="events"><table>
-      <tr><th>Plan</th><th>Days ago</th><th>w</th><th>Attended</th><th>w × attended</th></tr>
+      <tr><th>Plan</th><th>Days ago</th><th>Weight</th><th>Attended</th><th>Weight × attended</th></tr>
       ${rows}
       <tr><th>Total</th><td></td><th>${b.totalWeight.toFixed(3)}</th><td></td><th>${b.weightedAttendance.toFixed(3)}</th></tr>
     </table></div>
-    <p>Reliability</p>
-    <p class="formula">(${b.weightedAttendance.toFixed(3)} + ${PRIOR_SHOWS}) / (${b.totalWeight.toFixed(3)} + ${PRIOR_SHOWS} + ${PRIOR_NO_SHOWS}) = ${b.reliability.toFixed(3)}</p>
-    <p>Rating part</p>
-    <p class="formula">(${priorConfidence} × ${PRIOR_MEAN} + ${ratingSum}) / (${priorConfidence} + ${ratings.length}) = ${b.bayes.toFixed(3)} → (${b.bayes.toFixed(3)} − 1) / 4 = ${b.ratingPart.toFixed(3)}</p>
+    <p>Show-up rate, with ${PRIOR_SHOWS} pretend shows and ${PRIOR_NO_SHOWS} pretend no-show</p>
+    <p class="formula-line">(${b.weightedAttendance.toFixed(3)} + ${PRIOR_SHOWS}) / (${b.totalWeight.toFixed(3)} + ${PRIOR_SHOWS + PRIOR_NO_SHOWS}) = ${b.reliability.toFixed(3)}</p>
+    <p>Rating, then scaled from 1-5 to 0-1</p>
+    <p class="formula-line">(${priorConfidence} × ${PRIOR_MEAN} + ${ratingSum}) / (${priorConfidence} + ${ratings.length}) = ${b.bayes.toFixed(3)} → ${b.ratingPart.toFixed(3)}</p>
     <p>Score</p>
-    <p class="formula">100 × (${reliabilityWeight.toFixed(2)} × ${b.reliability.toFixed(3)} + ${b.ratingWeight.toFixed(2)} × ${b.ratingPart.toFixed(3)}) = ${b.score}</p>`;
+    <p class="formula-line">100 × (${reliabilityWeight.toFixed(2)} × ${b.reliability.toFixed(3)} + ${b.ratingWeight.toFixed(2)} × ${b.ratingPart.toFixed(3)}) = ${b.score}</p>`;
 }
 
 // Draws the right-hand panel for the selected user.
 function renderHood() {
   const user = selectedUser();
-  const breakdown = showUpBreakdown(user.events, state.settings);
-  renderHoodSummary(user, breakdown);
-  renderMaths(user, breakdown);
+  const b = showUpBreakdown(user.events, state.settings);
+
+  document.getElementById("hood-head").innerHTML = `
+    <span class="avatar" aria-hidden="true">${user.name[0]}</span>
+    <div><h2 id="hood-title">${user.name}</h2><p>${user.tagline}</p></div>`;
+  document.getElementById("equation").innerHTML = equationHtml(b);
+
+  const chart = document.getElementById("weights-chart");
+  chart.innerHTML = weightsChartSvg(user, b);
+  chart.setAttribute("aria-label",
+    `How much each of ${user.name}'s plans counts. Weight halves every ${state.settings.halfLife} days.`);
+
+  renderMaths(user, b);
   document.getElementById("log-name").textContent = user.name;
 }
 
-// Updates the approach cards, seed number and slider labels to match state.
-function renderControls() {
-  document.querySelectorAll("[data-approach]").forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.approach === state.approach));
-  });
-  document.getElementById("seed-value").textContent = state.seed;
-  document.querySelectorAll("[data-setting]").forEach((slider) => {
-    slider.value = state.settings[slider.dataset.setting];
-    document.getElementById(`${slider.dataset.setting}-value`).textContent = slider.value;
-  });
-}
-
-// Redraws the whole page from state. Five users is small enough that
-// redrawing everything is simpler than tracking what changed.
+// Redraws everything from state. Five users is small enough that redrawing
+// everything is simpler than tracking what changed.
 function render() {
   renderControls();
-  renderRanking();
+  renderBoard();
   renderHood();
 }
 
-// Tells screen-reader users what changed, since they can't see the rows move.
+// ---------- Actions ----------
+
+// Tells screen-reader users the new order, since they can't see rows move.
 function announceRanking() {
-  const ranked = rankedUsers(state.approach);
-  document.getElementById("announce").textContent =
-    `Ranked by ${APPROACH_NAMES[state.approach]}. First ${ranked[0].user.name}, last ${ranked[ranked.length - 1].user.name}.`;
+  const names = rankedUsers(state.approach).map(({ user }) => user.name).join(", ");
+  document.getElementById("announce").textContent = `Ranked by ${APPROACH_NAMES[state.approach]}: ${names}.`;
 }
 
-// Replaces all users with a fresh history from the given seed.
-// Plans logged by hand are lost, because they belong to the old history.
-function loadSeed(seed) {
-  state.seed = seed;
-  state.users = generateUsers(seed);
+// Switches to approach A, B or C.
+function pickApproach(approach) {
+  if (approach === state.approach) return;
+  state.approach = approach;
+  render();
+  announceRanking();
+}
+
+// Opens a person in the under-the-hood panel.
+function selectPerson(id) {
+  state.selectedId = id;
   render();
 }
 
-// Connects every button, slider and dropdown to state. Runs once at start-up.
+// Moves the selection one row up (-1) or down (+1) in the current ranking.
+function moveSelection(step) {
+  const ids = rankedUsers(state.approach).map(({ user }) => user.id);
+  const next = ids.indexOf(state.selectedId) + step;
+  if (next >= 0 && next < ids.length) selectPerson(ids[next]);
+}
+
+// Replaces all users with a fresh history from the given seed.
+// Plans added by hand are lost, because they belong to the old history.
+function loadSeed(seed) {
+  state.seed = seed;
+  state.users = generateUsers(seed);
+  buildBoard();
+  render();
+}
+
+// Puts everything back to how the demo starts.
+function reset() {
+  state.settings = { ...DEFAULT_SETTINGS };
+  state.approach = "A";
+  state.selectedId = "nico";
+  loadSeed(DEFAULT_SEED);
+}
+
+// Adds a plan from today to the selected person and redraws their dots.
+function addPlan(outcome) {
+  const user = selectedUser();
+  user.events.push({
+    daysAgo: 0,
+    showedUp: outcome === "showed",
+    cancelledLate: outcome === "late",
+    rating: outcome === "showed" ? Number(document.getElementById("log-rating").value) : null,
+  });
+  drawTimeline(board.querySelector(`[data-row="${user.id}"]`), user);
+  render();
+}
+
+// Hides the cover slide and lets people use the playground. The playground is
+// "inert" until then, so keyboard focus can't wander behind the cover.
+function start() {
+  cover.hidden = true;
+  app.inert = false;
+  app.classList.add("entering");
+  document.querySelector('[data-pick][aria-pressed="true"]').focus();
+}
+
+// Keyboard shortcuts for presenting: 1 2 3 pick an approach, ↑ ↓ change
+// person, R resets. Ignored inside sliders and dropdowns, which use those keys.
+function handleKey(e) {
+  if (!cover.hidden || document.activeElement.matches("input, select") || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (KEY_TO_APPROACH[e.key]) {
+    pickApproach(KEY_TO_APPROACH[e.key]);
+  } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault(); // otherwise the page scrolls too
+    moveSelection(e.key === "ArrowDown" ? 1 : -1);
+  } else if (e.key.toLowerCase() === "r") {
+    reset();
+  }
+}
+
+// Connects every button, slider and key to an action. Runs once at start-up.
 function setUpEvents() {
-  document.querySelectorAll("[data-approach]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (button.dataset.approach === state.approach) return;
-      state.previousApproach = state.approach;
-      state.approach = button.dataset.approach;
-      render();
-      announceRanking();
-    });
+  document.getElementById("start").addEventListener("click", start);
+  document.addEventListener("keydown", handleKey);
+
+  document.querySelectorAll("[data-pick]").forEach((button) => {
+    button.addEventListener("click", () => pickApproach(button.dataset.pick));
   });
 
-  // One listener on the table body instead of one per row, because the rows
-  // are redrawn on every render and would lose their own listeners.
-  document.getElementById("ranking-body").addEventListener("click", (e) => {
+  // One listener on the board instead of one per row, so it keeps working
+  // after the rows are rebuilt for new users.
+  board.addEventListener("click", (e) => {
     const button = e.target.closest("[data-id]");
-    if (!button) return;
-    state.selectedId = button.dataset.id;
-    render();
-    // The old button was replaced by the redraw, so put keyboard focus back on the new one.
-    document.querySelector(`[data-id="${state.selectedId}"]`).focus();
-  });
-
-  document.getElementById("new-seed").addEventListener("click", () => loadSeed(state.seed + 1));
-
-  document.getElementById("reset").addEventListener("click", () => {
-    state.settings = { ...DEFAULT_SETTINGS };
-    state.approach = "A";
-    state.previousApproach = null;
-    state.selectedId = "nico";
-    loadSeed(DEFAULT_SEED);
+    if (button) selectPerson(button.dataset.id);
   });
 
   document.querySelectorAll("[data-setting]").forEach((slider) => {
@@ -296,18 +415,13 @@ function setUpEvents() {
   });
 
   document.querySelectorAll("[data-outcome]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const outcome = button.dataset.outcome;
-      selectedUser().events.push({
-        daysAgo: 0,
-        showedUp: outcome === "showed",
-        cancelledLate: outcome === "late",
-        rating: outcome === "showed" ? Number(document.getElementById("log-rating").value) : null,
-      });
-      render();
-    });
+    button.addEventListener("click", () => addPlan(button.dataset.outcome));
   });
+
+  document.getElementById("new-seed").addEventListener("click", () => loadSeed(state.seed + 1));
+  document.getElementById("reset").addEventListener("click", reset);
 }
 
 setUpEvents();
+buildBoard();
 render();
