@@ -71,5 +71,5 @@ under C on almost every seed.
 | `logo.svg` | the MOVE! logo, used on the cover slide, in the header and as the browser tab icon |
 | `score.js` | the three formulas as pure functions plus all constants; no DOM, so Node can test it |
 | `sim.js` | seeded random generator and persona history generation |
-| `app.js` | holds state, draws the animated ranking and the under-the-hood panel, handles buttons, sliders and keys |
+| `app.js` | holds state, runs the five story steps, draws the animated ranking (with what each model looked at) and the under-the-hood panel, handles buttons, sliders and keys |
 | `tests.js` | 12 checks that the formulas behave as claimed |

@@ -28,7 +28,7 @@
           <p class="subtitle">Show-up score playground</p>
         </div>
       </div>
-      <div class="switch" role="group" aria-label="Scoring approach">
+      <div class="switch" role="group" aria-label="Scoring model">
         <button type="button" data-pick="A"><span class="key">A</span>Average</button>
         <button type="button" data-pick="B"><span class="key">B</span>Bayesian</button>
         <button type="button" data-pick="C"><span class="key">C</span>Show-up score</button>
@@ -46,7 +46,7 @@
           <span>#</span>
           <span>Person</span>
           <span class="timeline-head"><span>90 days ago</span><span>today</span></span>
-          <span class="score-head">Score</span>
+          <span>Score · what the model looked at</span>
           <span class="label-head">Label</span>
         </div>
         <ol class="board" id="board"></ol>
@@ -56,60 +56,145 @@
           <span class="dot late"></span>late cancel
           <span class="dot noshow"></span>no-show
         </p>
-      </section>
 
-      <aside class="hood" aria-labelledby="hood-title">
-        <p class="eyebrow">Under the hood · score C</p>
-        <div class="hood-head" id="hood-head"></div>
-
-        <div class="equation" id="equation"></div>
-
-        <figure class="weights">
-          <svg id="weights-chart" viewBox="0 0 400 124" role="img"></svg>
-          <figcaption><span>90 days ago</span><span>weight of each plan</span><span>today</span></figcaption>
-        </figure>
-
+        <!-- The sliders, under the ranking so you can watch the rows react. Last step only. -->
         <div class="tune">
           <label class="slider">
             <span>Half-life</span><output id="halfLife-value"></output>
             <input type="range" data-setting="halfLife" min="5" max="120" step="5">
+            <small>Try 120: old plans count almost fully. Watch Ana.</small>
           </label>
           <label class="slider">
             <span>Show-up weight</span><output id="reliabilityWeight-value"></output>
             <input type="range" data-setting="reliabilityWeight" min="0" max="1" step="0.05">
+            <small>Try 0%: only ratings count. Watch Nico.</small>
           </label>
           <label class="slider">
-            <span>Prior ratings</span><output id="priorConfidence-value"></output>
+            <span>Pretend ratings</span><output id="priorConfidence-value"></output>
             <input type="range" data-setting="priorConfidence" min="1" max="20" step="1">
+            <small>How many real ratings it takes to move away from 3.5★.</small>
           </label>
         </div>
+      </section>
 
-        <div class="log">
-          <p class="log-title">Add a plan for <span id="log-name"></span></p>
-          <button type="button" data-outcome="showed">+ Showed</button>
-          <select id="log-rating" aria-label="Rating for the plan">
-            <option value="5">5★</option><option value="4">4★</option><option value="3">3★</option>
-            <option value="2">2★</option><option value="1">1★</option>
-          </select>
-          <button type="button" data-outcome="late">+ Late cancel</button>
-          <button type="button" data-outcome="noshow">+ No-show</button>
-        </div>
+      <div class="side">
+        <!-- The story: an opening question, then one model at a time, each with its flaw.
+             Only the step matching state.step is shown (app.js toggles "hidden"). -->
+        <section class="story" aria-labelledby="step-count">
+          <div class="story-top">
+            <p class="eyebrow" id="step-count"></p>
+            <div class="progress" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+          </div>
 
-        <details class="maths">
-          <summary>Exact maths</summary>
-          <div id="maths-body"></div>
-        </details>
-      </aside>
+          <article class="step" data-step-text="0">
+            <h2>Five people invited you tonight. Who do you pick?</h2>
+            <p>On MOVE you join a plan with someone new, the same day. Afterwards both people rate each other from 1 to 5★, and the app knows who actually showed up.</p>
+            <p>Each row is one person. Each dot is one of their plans in the last 90 days:</p>
+            <p class="legend-inline">
+              <span class="dot showed"></span>showed up
+              <span class="dot late"></span>cancelled late
+              <span class="dot noshow"></span>no-show
+            </p>
+            <p>MOVE needs one number that says <b>“this person will show up”</b>. Let's try three ways to calculate it.</p>
+          </article>
+
+          <article class="step" data-step-text="1" hidden>
+            <p class="model">Model A</p>
+            <h2>Average rating</h2>
+            <p>The obvious score: add up someone's ratings and divide by how many there are.</p>
+            <p class="formula-box">sum of ratings ÷ number of ratings</p>
+            <h3>Result</h3>
+            <p>Sam and Nico tie for first place with a perfect 5.00.</p>
+            <h3>The flaw</h3>
+            <ul class="flaws">
+              <li><b>Sam</b> has a single rating. One lucky review beats Marta's nineteen.</li>
+              <li><b>Nico</b> missed 15 of his 20 plans. Nobody can rate you if you don't show up, so A never sees it. His missed plans are faded because A ignores them.</li>
+            </ul>
+          </article>
+
+          <article class="step" data-step-text="2" hidden>
+            <p class="model">Model B · fixes “one lucky review”</p>
+            <h2>Bayesian average</h2>
+            <p>Everyone starts with 5 pretend ratings of 3.5★, then their real ratings are added. A few reviews can't move you far from 3.5; many reviews can.</p>
+            <p class="formula-box">(5 × 3.5★ + ratings) ÷ (5 + number of ratings)</p>
+            <h3>What changed</h3>
+            <ul class="changes">
+              <li><span class="move down">▼4</span><span><b>Sam</b> 1st → 5th. One 5★ against five pretend 3.5★ ratings gives 3.75.</span></li>
+              <li><span class="move up">▲1</span><span><b>Nico</b> 2nd → 1st. Five real 5★ ratings outweigh the pretend ones: 4.25.</span></li>
+            </ul>
+            <h3>The flaw</h3>
+            <ul class="flaws">
+              <li>B still only reads ratings. Nico's 15 no-shows are invisible, and now he's in first place.</li>
+            </ul>
+          </article>
+
+          <article class="step" data-step-text="3" hidden>
+            <p class="model">Model C · fixes “no-shows are invisible”</p>
+            <h2>Show-up score</h2>
+            <p>Every plan counts: showed up = 1, cancelled late = ½, no-show = 0. Recent plans count more, so a plan from 30 days ago counts half. Then 70% showing up is mixed with 30% rating.</p>
+            <p class="formula-box">100 × (70% show-up rate + 30% rating)</p>
+            <h3>What changed</h3>
+            <ul class="changes">
+              <li><span class="move down">▼4</span><span><b>Nico</b> 1st → 5th, score 44. His no-shows count now, and his last 10 plans were all no-shows.</span></li>
+              <li><span class="move up">▲1</span><span><b>Ana</b> 3rd → 2nd, score 80. Flaky two months ago, reliable since. Old plans weigh less, so she recovers.</span></li>
+              <li><span class="move up">▲2</span><span><b>Sam</b> 5th → 3rd, score 73. One plan says little either way, so a new user starts in the middle.</span></li>
+            </ul>
+            <h3>The trade-off</h3>
+            <ul class="flaws">
+              <li>How much should the past count? How much should ratings count? These are choices, not facts. Next, change them yourself.</li>
+            </ul>
+          </article>
+
+          <article class="step" data-step-text="4" hidden>
+            <p class="model">Your turn</p>
+            <h2>Under the hood</h2>
+            <p>Select anyone to see how their score C is built below. Drag the sliders under the ranking to change the rules for everyone.</p>
+          </article>
+
+          <div class="story-nav">
+            <button type="button" id="back">← Back</button>
+            <button type="button" id="next"></button>
+          </div>
+        </section>
+
+        <aside class="hood" aria-labelledby="hood-title">
+          <p class="eyebrow">Under the hood · score C</p>
+          <div class="hood-head" id="hood-head"></div>
+
+          <div class="equation" id="equation"></div>
+
+          <figure class="weights">
+            <svg id="weights-chart" viewBox="0 0 400 124" role="img"></svg>
+            <figcaption><span>90 days ago</span><span>weight of each plan</span><span>today</span></figcaption>
+          </figure>
+
+          <div class="log">
+            <p class="log-title">Add a plan for <span id="log-name"></span></p>
+            <button type="button" data-outcome="showed">+ Showed</button>
+            <select id="log-rating" aria-label="Rating for the plan">
+              <option value="5">5★</option><option value="4">4★</option><option value="3">3★</option>
+              <option value="2">2★</option><option value="1">1★</option>
+            </select>
+            <button type="button" data-outcome="late">+ Late cancel</button>
+            <button type="button" data-outcome="noshow">+ No-show</button>
+          </div>
+
+          <details class="maths">
+            <summary>Exact maths</summary>
+            <div id="maths-body"></div>
+          </details>
+        </aside>
+      </div>
     </main>
 
     <footer class="bottom">
       <div class="seed">
         <span>Seed <strong id="seed-value"></strong></span>
         <button type="button" id="new-seed">Shuffle users</button>
-        <button type="button" id="reset">Reset</button>
+        <button type="button" id="reset">Restart</button>
       </div>
       <p class="keys">
-        <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> approach · <kbd aria-label="Up arrow">▲</kbd><kbd aria-label="Down arrow">▼</kbd> person · <kbd>R</kbd> reset
+        <kbd aria-label="Left arrow">◀</kbd><kbd aria-label="Right arrow">▶</kbd> step · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> model · <kbd aria-label="Up arrow">▲</kbd><kbd aria-label="Down arrow">▼</kbd> person · <kbd>R</kbd> restart
       </p>
     </footer>
   </div>

@@ -13,6 +13,18 @@ const LABEL_CLASSES = { "Trusted": "trusted", "Building trust": "building", "Low
 const OUTCOME_NAMES = { showed: "showed up", late: "late cancel", noshow: "no-show" };
 const KEY_TO_APPROACH = { 1: "A", 2: "B", 3: "C" };
 
+// The story: step 0 asks the question, steps 1-3 reveal one model each, and
+// step 4 opens the controls. STEP_APPROACH says which ranking each step shows.
+const STEP_APPROACH = [null, "A", "B", "C", "C"];
+const STEP_TITLES = ["Five people invited you tonight", "Model A, average rating",
+  "Model B, Bayesian average", "Model C, show-up score", "Under the hood"];
+const NEXT_LABELS = ["See model A →", "Fix it: model B →", "Fix it: model C →", "Under the hood →", "Start again"];
+const EXPLORE_STEP = 4;
+
+// How much better or worse someone's recent plans must be than their whole
+// record before the row says so (see recencyNote).
+const RECENCY_NOTE_GAP = 0.08;
+
 const GHOST_OPACITY = 0.12;  // plans that A and B never see
 const OLDEST_OPACITY = 0.25; // under C, even the oldest plan stays faintly visible
 
@@ -33,7 +45,10 @@ const state = {
   users: generateUsers(DEFAULT_SEED),
   settings: { ...DEFAULT_SETTINGS }, // a copy, so moving a slider never changes the defaults
   approach: "A",
+  previousApproach: null,            // used for the ▲▼ arrows: how far each person moved
   selectedId: "nico",
+  step: 0,                           // which step of the story is on screen
+  changed: false,                    // true once sliders, plans or users differ from the story's
 };
 
 const app = document.getElementById("app");
@@ -63,6 +78,11 @@ function rankedUsers(approach) {
   return state.users
     .map((user) => ({ user, scores: scoresFor(user) }))
     .sort((x, y) => sortValue(y.scores, approach) - sortValue(x.scores, approach));
+}
+
+// Maps each user id to their position (0 = first) under an approach.
+function positionsBy(approach) {
+  return Object.fromEntries(rankedUsers(approach).map(({ user }, position) => [user.id, position]));
 }
 
 // The user whose score the right-hand panel is showing.
@@ -122,6 +142,42 @@ function dotOpacity(event) {
   return OLDEST_OPACITY + (1 - OLDEST_OPACITY) * weight;
 }
 
+// One short line under each score saying what the current model looked at for
+// this person. It makes the trade-off visible: why someone moved up or down.
+function reasonText(user, scores) {
+  const counts = countOutcomes(user.events);
+  const ratingCount = ratingsOf(user.events).length;
+  const missed = counts.late + counts.noshow;
+  if (state.approach === "A") {
+    const ignored = missed > 0 ? ` · ${plural(missed, "missed plan")} ignored` : "";
+    return `${plural(ratingCount, "rating")}${ignored}`;
+  }
+  if (state.approach === "B") {
+    return `${plural(ratingCount, "rating")} + ${state.settings.priorConfidence} pretend ${PRIOR_MEAN}★`;
+  }
+  return `came to ${counts.showed} of ${user.events.length}${recencyNote(scores.C)}`;
+}
+
+// Notes when someone's recent plans are clearly better or worse than their
+// whole record: that's when recency weighting moves their score the most.
+function recencyNote(b) {
+  const plain = b.rows.reduce((total, r) => total + r.attendance, 0) / b.rows.length;
+  const weighted = b.weightedAttendance / b.totalWeight;
+  if (weighted - plain > RECENCY_NOTE_GAP) return " · recent plans better";
+  if (plain - weighted > RECENCY_NOTE_GAP) return " · recent plans worse";
+  return "";
+}
+
+// The ▲2 / ▼3 under a rank: how far someone moved since the previous model.
+function rankChangeHtml(previousPositions, userId, position) {
+  if (!previousPositions) return "";
+  const change = previousPositions[userId] - position;
+  if (change === 0) return "";
+  const direction = change > 0 ? "up" : "down";
+  return `<span class="move ${direction}"><span aria-hidden="true">${change > 0 ? "▲" : "▼"}${Math.abs(change)}</span>` +
+    `<span class="sr-only">${direction} ${plural(Math.abs(change), "place")}</span></span>`;
+}
+
 // ---------- The ranking board ----------
 
 // Builds one row of the board. Rows are made once and afterwards only moved
@@ -131,14 +187,19 @@ function createRow(user) {
   row.className = "row";
   row.dataset.row = user.id;
   row.innerHTML = `
-    <span class="rank"></span>
+    <span class="rank"><span class="rank-number"></span><span class="change"></span></span>
     <button type="button" class="who" data-id="${user.id}">
       <span class="avatar" aria-hidden="true">${user.name[0]}</span>
       <span><strong>${user.name}</strong><small>${user.tagline}</small></span>
     </button>
     <span class="timeline" role="img"></span>
-    <span class="meter" aria-hidden="true"><span class="fill"></span><span class="tick t50"></span><span class="tick t75"></span></span>
-    <span class="value"></span>
+    <span class="score">
+      <span class="score-line">
+        <span class="meter" aria-hidden="true"><span class="fill"></span><span class="tick t50"></span><span class="tick t75"></span></span>
+        <span class="value"></span>
+      </span>
+      <small class="reason"></small>
+    </span>
     <span class="badge"></span>`;
   return row;
 }
@@ -164,22 +225,32 @@ function buildBoard() {
   board.style.setProperty("--count", state.users.length);
 }
 
-// Moves every row to its rank under the selected approach and updates its
+// Moves every row to its rank under the selected model and updates its
 // numbers. CSS turns each change of --rank into a sliding animation.
+// On the opening step (step 0) nothing is scored yet: rows keep their
+// original order and show "?".
 function renderBoard() {
-  rankedUsers(state.approach).forEach(({ user, scores }, position) => {
+  const intro = state.step === 0;
+  const previous = state.previousApproach ? positionsBy(state.previousApproach) : null;
+  const rows = intro
+    ? state.users.map((user) => ({ user, scores: scoresFor(user) }))
+    : rankedUsers(state.approach);
+
+  rows.forEach(({ user, scores }, position) => {
     const row = board.querySelector(`[data-row="${user.id}"]`);
     const selected = user.id === state.selectedId;
     row.style.setProperty("--rank", position);
     row.classList.toggle("selected", selected);
     row.querySelector(".who").setAttribute("aria-pressed", String(selected));
-    row.querySelector(".rank").textContent = position + 1;
-    row.querySelector(".fill").style.width = `${100 * meterFraction(scores, state.approach)}%`;
-    row.querySelector(".value").textContent = formatValue(scores, state.approach);
+    row.querySelector(".rank-number").textContent = intro ? "" : position + 1;
+    row.querySelector(".change").innerHTML = intro ? "" : rankChangeHtml(previous, user.id, position);
+    row.querySelector(".fill").style.width = intro ? "0%" : `${100 * meterFraction(scores, state.approach)}%`;
+    row.querySelector(".value").textContent = intro ? "?" : formatValue(scores, state.approach);
+    row.querySelector(".reason").textContent = intro ? "" : reasonText(user, scores);
     const badge = row.querySelector(".badge");
     badge.textContent = scores.C.label;
     badge.className = `badge ${LABEL_CLASSES[scores.C.label]}`;
-    row.querySelectorAll(".dot").forEach((dot, i) => { dot.style.opacity = dotOpacity(user.events[i]); });
+    row.querySelectorAll(".dot").forEach((dot, i) => { dot.style.opacity = intro ? 1 : dotOpacity(user.events[i]); });
   });
 }
 
@@ -196,8 +267,10 @@ function formulaText() {
 // Updates the switch, formula, seed number and sliders to match state.
 function renderControls() {
   app.dataset.approach = state.approach; // lets CSS show C-only things such as labels
+  app.dataset.step = state.step;         // lets CSS show step-only things such as the panel
   document.querySelectorAll("[data-pick]").forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.pick === state.approach));
+    const active = state.step > 0 && button.dataset.pick === state.approach;
+    button.setAttribute("aria-pressed", String(active));
   });
   document.getElementById("formula").textContent = formulaText();
   document.getElementById("seed-value").textContent = state.seed;
@@ -301,28 +374,70 @@ function renderHood() {
   document.getElementById("log-name").textContent = user.name;
 }
 
+// ---------- The story ----------
+
+// Shows the text for the current step and updates the step counter and buttons.
+function renderStory() {
+  document.querySelectorAll("[data-step-text]").forEach((article) => {
+    article.hidden = Number(article.dataset.stepText) !== state.step;
+  });
+  document.getElementById("step-count").textContent = `Step ${state.step + 1} of ${STEP_TITLES.length}`;
+  document.querySelectorAll(".progress span").forEach((bar, i) => bar.classList.toggle("done", i <= state.step));
+  document.getElementById("back").disabled = state.step === 0;
+  document.getElementById("next").textContent = NEXT_LABELS[state.step];
+}
+
 // Redraws everything from state. Five users is small enough that redrawing
 // everything is simpler than tracking what changed.
 function render() {
   renderControls();
+  renderStory();
   renderBoard();
   renderHood();
 }
 
 // ---------- Actions ----------
 
-// Tells screen-reader users the new order, since they can't see rows move.
-function announceRanking() {
-  const names = rankedUsers(state.approach).map(({ user }) => user.name).join(", ");
-  document.getElementById("announce").textContent = `Ranked by ${APPROACH_NAMES[state.approach]}: ${names}.`;
+// Tells screen-reader users what changed, since they can't see rows move.
+function announce(text) {
+  document.getElementById("announce").textContent = text;
 }
 
-// Switches to approach A, B or C.
+// The current order as a sentence, for screen readers.
+function rankingSentence() {
+  const names = rankedUsers(state.approach).map(({ user }) => user.name).join(", ");
+  return `Ranked by ${APPROACH_NAMES[state.approach]}: ${names}.`;
+}
+
+// Moves the story to a step and shows that step's model.
+function goToStep(step) {
+  // The story's text describes the default users and settings, so going back
+  // into the story undoes slider moves, added plans and new users.
+  if (step < EXPLORE_STEP && state.changed) restoreStoryData();
+  // Inside the story, the arrows always compare with the previous step's
+  // model, because that's what the story text describes. Step 0 has no model
+  // yet, so it keeps A ready for step 1. Step 4 keeps step 3's model (C).
+  if (step < EXPLORE_STEP) {
+    state.approach = STEP_APPROACH[step] ?? "A";
+    state.previousApproach = STEP_APPROACH[step - 1] ?? null;
+  }
+  state.step = step;
+  render();
+  announce(`Step ${step + 1} of ${STEP_TITLES.length}: ${STEP_TITLES[step]}. ${step > 0 ? rankingSentence() : ""}`);
+}
+
+// Switches to model A, B or C. During the story that means jumping to the
+// model's step; on the last step it only changes the ranking.
 function pickApproach(approach) {
+  if (state.step < EXPLORE_STEP) {
+    goToStep(STEP_APPROACH.indexOf(approach));
+    return;
+  }
   if (approach === state.approach) return;
+  state.previousApproach = state.approach;
   state.approach = approach;
   render();
-  announceRanking();
+  announce(rankingSentence());
 }
 
 // Opens a person in the under-the-hood panel.
@@ -340,19 +455,31 @@ function moveSelection(step) {
 
 // Replaces all users with a fresh history from the given seed.
 // Plans added by hand are lost, because they belong to the old history.
-function loadSeed(seed) {
+function loadUsers(seed) {
   state.seed = seed;
   state.users = generateUsers(seed);
   buildBoard();
+}
+
+// Puts back the users and settings the story was written for.
+function restoreStoryData() {
+  state.settings = { ...DEFAULT_SETTINGS };
+  loadUsers(DEFAULT_SEED);
+  state.changed = false;
+}
+
+// "Shuffle users": the next seed's people. Only shown on the last step.
+function shuffleUsers() {
+  loadUsers(state.seed + 1);
+  state.changed = true;
   render();
 }
 
-// Puts everything back to how the demo starts.
-function reset() {
-  state.settings = { ...DEFAULT_SETTINGS };
-  state.approach = "A";
+// Back to the opening question with the story's users and settings.
+function restart() {
+  restoreStoryData();
   state.selectedId = "nico";
-  loadSeed(DEFAULT_SEED);
+  goToStep(0);
 }
 
 // Adds a plan from today to the selected person and redraws their dots.
@@ -365,6 +492,7 @@ function addPlan(outcome) {
     rating: outcome === "showed" ? Number(document.getElementById("log-rating").value) : null,
   });
   drawTimeline(board.querySelector(`[data-row="${user.id}"]`), user);
+  state.changed = true;
   render();
 }
 
@@ -374,20 +502,25 @@ function start() {
   cover.hidden = true;
   app.inert = false;
   app.classList.add("entering");
-  document.querySelector('[data-pick][aria-pressed="true"]').focus();
+  document.getElementById("next").focus();
 }
 
-// Keyboard shortcuts for presenting: 1 2 3 pick an approach, ↑ ↓ change
-// person, R resets. Ignored inside sliders and dropdowns, which use those keys.
+// Keyboard shortcuts for presenting: ← → move through the story, 1 2 3 pick
+// a model, ↑ ↓ change person, R restarts. Ignored inside sliders and
+// dropdowns, which use those keys themselves.
 function handleKey(e) {
   if (!cover.hidden || document.activeElement.matches("input, select") || e.ctrlKey || e.metaKey || e.altKey) return;
   if (KEY_TO_APPROACH[e.key]) {
     pickApproach(KEY_TO_APPROACH[e.key]);
+  } else if (e.key === "ArrowRight" && state.step < EXPLORE_STEP) {
+    goToStep(state.step + 1);
+  } else if (e.key === "ArrowLeft" && state.step > 0) {
+    goToStep(state.step - 1);
   } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     e.preventDefault(); // otherwise the page scrolls too
     moveSelection(e.key === "ArrowDown" ? 1 : -1);
   } else if (e.key.toLowerCase() === "r") {
-    reset();
+    restart();
   }
 }
 
@@ -395,6 +528,12 @@ function handleKey(e) {
 function setUpEvents() {
   document.getElementById("start").addEventListener("click", start);
   document.addEventListener("keydown", handleKey);
+
+  document.getElementById("back").addEventListener("click", () => goToStep(state.step - 1));
+  document.getElementById("next").addEventListener("click", () => {
+    if (state.step === EXPLORE_STEP) restart();
+    else goToStep(state.step + 1);
+  });
 
   document.querySelectorAll("[data-pick]").forEach((button) => {
     button.addEventListener("click", () => pickApproach(button.dataset.pick));
@@ -410,6 +549,7 @@ function setUpEvents() {
   document.querySelectorAll("[data-setting]").forEach((slider) => {
     slider.addEventListener("input", () => {
       state.settings[slider.dataset.setting] = Number(slider.value);
+      state.changed = true;
       render();
     });
   });
@@ -418,8 +558,8 @@ function setUpEvents() {
     button.addEventListener("click", () => addPlan(button.dataset.outcome));
   });
 
-  document.getElementById("new-seed").addEventListener("click", () => loadSeed(state.seed + 1));
-  document.getElementById("reset").addEventListener("click", reset);
+  document.getElementById("new-seed").addEventListener("click", shuffleUsers);
+  document.getElementById("reset").addEventListener("click", restart);
 }
 
 setUpEvents();
