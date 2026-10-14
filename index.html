@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MOVE! Show-up score playground</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <p class="logo">MOVE!</p>
+    <h1>The show-up score playground</h1>
+    <p class="subtitle">Three ways to score whether a user will show up, on the same five simulated users.</p>
+  </header>
+
+  <main>
+    <section class="toolbar">
+      <div class="approach-buttons" id="approach-buttons">
+        <button data-approach="A">A · Simple average</button>
+        <button data-approach="B">B · Bayesian average</button>
+        <button data-approach="C">C · Show-up score</button>
+      </div>
+      <div class="seed">
+        <span>Seed <strong id="seed-value"></strong></span>
+        <button id="new-seed">New seed</button>
+        <button id="reset">Reset</button>
+      </div>
+    </section>
+
+    <p class="legend">
+      <span class="dot showed"></span> showed up
+      <span class="dot late"></span> late cancel
+      <span class="dot noshow"></span> no-show
+      <span class="hint">Click a user to open the Explain panel.</span>
+    </p>
+
+    <section class="cards" id="cards"></section>
+
+    <section class="grid">
+      <div class="card">
+        <h2>Ranking</h2>
+        <table class="ranking" id="ranking"></table>
+      </div>
+
+      <div class="card">
+        <h2>Settings for C</h2>
+        <label class="slider">
+          <span>Half-life <output id="halfLife-value"></output> days</span>
+          <input type="range" data-setting="halfLife" min="5" max="120" step="5">
+        </label>
+        <label class="slider">
+          <span>Reliability weight <output id="reliabilityWeight-value"></output></span>
+          <input type="range" data-setting="reliabilityWeight" min="0" max="1" step="0.05">
+        </label>
+        <label class="slider">
+          <span>Prior strength C <output id="priorConfidence-value"></output> ratings</span>
+          <input type="range" data-setting="priorConfidence" min="1" max="20" step="1">
+        </label>
+      </div>
+
+      <form class="card" id="add-event">
+        <h2>Add event (today)</h2>
+        <label>User <select id="add-user"></select></label>
+        <label>Outcome
+          <select id="add-outcome">
+            <option value="showed">Showed up</option>
+            <option value="late">Late cancel</option>
+            <option value="noshow">No-show</option>
+          </select>
+        </label>
+        <label>Rating
+          <select id="add-rating">
+            <option>5</option><option>4</option><option>3</option><option>2</option><option>1</option>
+          </select>
+        </label>
+        <button type="submit">Add event</button>
+      </form>
+    </section>
+
+    <section class="card explain" id="explain"></section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
